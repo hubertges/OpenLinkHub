@@ -191,6 +191,14 @@ type Payload struct {
 	MousePositionAbsolute         bool                  `json:"mousePositionAbsolute"`
 	MacroRepeat                   int                   `json:"macroRepeat"`
 	MacroRepeatDelay              int                   `json:"macroRepeatDelay"`
+	ScrollMode                    int                   `json:"scrollMode"`
+	SmartReel                     bool                  `json:"smartReel"`
+	Acceleration                  bool                  `json:"acceleration"`
+	IdleTime                      int                   `json:"idleTime"`
+	LowBatteryThreshold           uint8                 `json:"lowBatteryThreshold"`
+	DPI                           int                   `json:"dpi"`
+	DPIX                          int                   `json:"dpiX"`
+	DPIY                          int                   `json:"dpiY"`
 	Status                        int
 	Code                          int
 	Message                       string
@@ -5465,3 +5473,99 @@ func ProcessSetAllDevicesColor(r *http.Request) *Payload {
 	devices.UpdateAllDevicesStaticColor(req.Color)
 	return &Payload{Message: language.GetValue("txtDeviceRgbProfileChanged"), Code: http.StatusOK, Status: 1}
 }
+
+// ProcessRazerGameMode handles Game Mode toggle on Razer keyboards
+func ProcessRazerGameMode(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) == nil {
+		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
+	}
+	devices.CallDeviceMethod(req.DeviceId, "SetGameMode", req.Enabled)
+	return &Payload{Message: "Game Mode updated", Code: http.StatusOK, Status: 1}
+}
+
+// ProcessRazerMacroMode handles Macro Mode toggle on Razer keyboards
+func ProcessRazerMacroMode(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) == nil {
+		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
+	}
+	devices.CallDeviceMethod(req.DeviceId, "SetMacroMode", req.Enabled)
+	return &Payload{Message: "Macro Mode updated", Code: http.StatusOK, Status: 1}
+}
+
+// ProcessRazerScroll handles scroll mode and smart reel changes for Razer mice
+func ProcessRazerScroll(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) == nil {
+		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
+	}
+	devices.CallDeviceMethod(req.DeviceId, "SetScrollMode", req.ScrollMode)
+	devices.CallDeviceMethod(req.DeviceId, "SetSmartReel", req.SmartReel)
+	devices.CallDeviceMethod(req.DeviceId, "SetScrollAcceleration", req.Acceleration)
+	return &Payload{Message: "Scroll settings updated", Code: http.StatusOK, Status: 1}
+}
+
+// ProcessRazerPower handles idle sleep time and low battery threshold settings
+func ProcessRazerPower(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) == nil {
+		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
+	}
+	devices.CallDeviceMethod(req.DeviceId, "SetIdleTime", req.IdleTime)
+	devices.CallDeviceMethod(req.DeviceId, "SetLowBatteryThreshold", req.LowBatteryThreshold)
+	return &Payload{Message: "Power settings updated", Code: http.StatusOK, Status: 1}
+}
+
+// ProcessRazerSync handles Razer effect synchronization toggle
+func ProcessRazerSync(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) != nil {
+		devices.CallDeviceMethod(req.DeviceId, "SetSyncEffects", req.Enabled)
+	}
+	return &Payload{Message: "Razer effect synchronization updated", Code: http.StatusOK, Status: 1}
+}
+
+// ProcessRazerDPI handles direct DPI changes for Razer mice
+func ProcessRazerDPI(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if devices.GetDevice(req.DeviceId) == nil {
+		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
+	}
+	dpiX := req.DPIX
+	dpiY := req.DPIY
+	if dpiX <= 0 && req.DPI > 0 {
+		dpiX = req.DPI
+		dpiY = req.DPI
+	}
+	res := devices.CallDeviceMethod(req.DeviceId, "SetDPI", dpiX, dpiY)
+	if len(res) > 0 && res[0].Uint() == 1 {
+		return &Payload{Message: language.GetValue("txtMouseDPIUpdated"), Code: http.StatusOK, Status: 1}
+	}
+	return &Payload{Message: language.GetValue("txtUnableToSaveDPI"), Code: http.StatusOK, Status: 0}
+}
+

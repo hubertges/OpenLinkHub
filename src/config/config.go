@@ -46,6 +46,8 @@ type Configuration struct {
 	EnableMotherboard         bool     `json:"enableMotherboard"`
 	MotherboardBiosOnExit     bool     `json:"motherboardBiosOnExit"`
 	MemoryRegisterOverride    []byte   `json:"memoryRegisterOverride"`
+	EnableRazer               bool     `json:"enableRazer"`
+	RazerSyncEffects          bool     `json:"razerSyncEffects"`
 }
 
 var (
@@ -72,6 +74,8 @@ var (
 		"enableMotherboard":         false,
 		"motherboardBiosOnExit":     false,
 		"memoryRegisterOverride":    make([]byte, 0),
+		"enableRazer":               true,
+		"razerSyncEffects":          false,
 	}
 	systemService = true
 )

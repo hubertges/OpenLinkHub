@@ -212,6 +212,9 @@ const (
 	ProductTypeScufEnvisionProV2WU  = 604
 	ProductTypeScufEnvisionProV2W   = 605
 	ProductTypeScufDongleV2         = 606
+	ProductTypeRazerKeyboard        = 801
+	ProductTypeRazerMouse           = 802
+	ProductTypeRazerGeneric         = 803
 	ProductTypeXeneonEdge           = 995
 	ProductTypeMotherboard          = 996
 	ProductTypeDongle               = 997

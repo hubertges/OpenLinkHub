@@ -103,7 +103,10 @@ func (d *Device) Stop() {
 	go func() {
 		once.Do(func() {
 			if d.activeRgb != nil {
-				d.activeRgb.Exit <- true
+				select {
+				case d.activeRgb.Exit <- true:
+				default:
+				}
 				d.activeRgb = nil
 			}
 			d.timer.Stop()
@@ -136,18 +139,26 @@ func (d *Device) AddDeviceController(controller *common.ClusterController) {
 // RemoveDeviceControllerBySerial removes a controller by its serial
 func (d *Device) RemoveDeviceControllerBySerial(serial string) {
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	var exitRgb *rgb.ActiveRGB
 
 	for i, c := range d.Controllers {
 		if c.Serial == serial {
 			d.Controllers = append(d.Controllers[:i], d.Controllers[i+1:]...)
 			if len(d.Controllers) == 0 {
 				if d.activeRgb != nil {
-					d.activeRgb.Exit <- true
+					exitRgb = d.activeRgb
 					d.activeRgb = nil
 				}
 			}
-			return
+			break
+		}
+	}
+	d.mutex.Unlock()
+
+	if exitRgb != nil {
+		select {
+		case exitRgb.Exit <- true:
+		default:
 		}
 	}
 }
@@ -438,12 +449,15 @@ func (d *Device) setDeviceColor() {
 		return
 	}
 
+	activeRgb := rgb.Exit()
+	d.activeRgb = activeRgb
+	d.activeRgb.RGBStartColor = rgb.GenerateRandomColor(1)
+	d.activeRgb.RGBEndColor = rgb.GenerateRandomColor(1)
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	exitChan := activeRgb.Exit
+
 	go func() {
 		startTime := time.Now()
-		d.activeRgb = rgb.Exit()
-		d.activeRgb.RGBStartColor = rgb.GenerateRandomColor(1)
-		d.activeRgb.RGBEndColor = rgb.GenerateRandomColor(1)
-		rand.New(rand.NewSource(time.Now().UnixNano()))
 
 		for {
 			lightChannels := 0
@@ -452,7 +466,7 @@ func (d *Device) setDeviceColor() {
 			}
 
 			select {
-			case <-d.activeRgb.Exit:
+			case <-exitChan:
 				return
 			default:
 				if d.Exit {
@@ -497,15 +511,23 @@ func (d *Device) generateRgbEffect(channels int, startTime *time.Time, rgbProfil
 	if rgbCustomColor {
 		r.RGBStartColor = &profile.StartColor
 		r.RGBEndColor = &profile.EndColor
-	} else {
+	} else if d.activeRgb != nil {
 		r.RGBStartColor = d.activeRgb.RGBStartColor
 		r.RGBEndColor = d.activeRgb.RGBEndColor
+	} else {
+		col := rgb.GenerateRandomColor(1)
+		r.RGBStartColor = col
+		r.RGBEndColor = col
 	}
 
 	// Brightness
 	r.RGBBrightness = rgb.GetBrightnessValueFloat(*d.DeviceProfile.BrightnessSlider)
-	r.RGBStartColor.Brightness = r.RGBBrightness
-	r.RGBEndColor.Brightness = r.RGBBrightness
+	if r.RGBStartColor != nil {
+		r.RGBStartColor.Brightness = r.RGBBrightness
+	}
+	if r.RGBEndColor != nil {
+		r.RGBEndColor.Brightness = r.RGBBrightness
+	}
 
 	r.MinTemp = profile.MinTemp
 	r.MaxTemp = profile.MaxTemp

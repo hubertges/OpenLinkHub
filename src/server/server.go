@@ -1848,6 +1848,72 @@ func updateMacroSettings(w http.ResponseWriter, r *http.Request) {
 	resp.Send(w)
 }
 
+// setRazerGameMode handles Razer keyboard Game Mode
+func setRazerGameMode(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerGameMode(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// setRazerMacroMode handles Razer keyboard Macro Mode
+func setRazerMacroMode(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerMacroMode(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// setRazerScroll handles Razer mouse scroll settings
+func setRazerScroll(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerScroll(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// setRazerPower handles Razer mouse power/sleep settings
+func setRazerPower(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerPower(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// setRazerSync handles Razer effect synchronization toggle
+func setRazerSync(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerSync(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// setRazerDPI handles direct DPI change for Razer mouse
+func setRazerDPI(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessRazerDPI(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
 // deleteMacroProfile handles deletion of macro profile
 func deleteMacroProfile(w http.ResponseWriter, r *http.Request) {
 	request := requests.ProcessDeleteMacroProfile(r)
@@ -2684,6 +2750,12 @@ func setRoutes() http.Handler {
 	handleFunc(r, "/api/audio/outputDevice", http.MethodPost, setAudioOutputDeviceSettings)
 	handleFunc(r, "/api/devices/channel", http.MethodPost, getChannelData)
 	handleFunc(r, "/api/display/update", http.MethodPost, updateDisplayData)
+	handleFunc(r, "/api/razer/gamemode", http.MethodPost, setRazerGameMode)
+	handleFunc(r, "/api/razer/macromode", http.MethodPost, setRazerMacroMode)
+	handleFunc(r, "/api/razer/scroll", http.MethodPost, setRazerScroll)
+	handleFunc(r, "/api/razer/power", http.MethodPost, setRazerPower)
+	handleFunc(r, "/api/razer/sync", http.MethodPost, setRazerSync)
+	handleFunc(r, "/api/razer/dpi", http.MethodPost, setRazerDPI)
 
 	// PUT
 	handleFunc(r, "/api/temperatures/update", http.MethodPut, updateTemperatureProfile)

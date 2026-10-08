@@ -130,6 +130,7 @@ import (
 	"OpenLinkHub/src/metrics"
 	"OpenLinkHub/src/motherboards"
 	"OpenLinkHub/src/openrgb"
+	"OpenLinkHub/src/razer"
 	"OpenLinkHub/src/rgb"
 	"OpenLinkHub/src/smbus"
 	"OpenLinkHub/src/usb"
@@ -188,6 +189,9 @@ func Stop() {
 	for _, device := range devices {
 		CallDeviceMethod(device.Serial, "Stop")
 		delete(devices, device.Serial)
+	}
+	if config.GetConfig().EnableRazer {
+		razer.Stop()
 	}
 	err := hid.Exit()
 	if err != nil {
@@ -696,6 +700,11 @@ func Init() {
 		initWG.Wait()
 		openrgb.Init()
 		openrgb.SendToOpenRGB()
+	}
+
+	// Razer devices via OpenRazer
+	if config.GetConfig().EnableRazer {
+		razer.Init(addDevice, deleteDevice)
 	}
 
 	inputmanager.SetDispatcher(Dispatch)
