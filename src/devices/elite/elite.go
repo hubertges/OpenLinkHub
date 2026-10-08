@@ -1103,6 +1103,43 @@ func (d *Device) setDeviceColor() {
 							r.Colorwarp(&startTime, d.activeRgb)
 							buff = append(buff, r.Output...)
 						}
+					case "nebula":
+						{
+							r.Nebula(&startTime)
+							buff = append(buff, r.Output...)
+						}
+					case "marquee":
+						{
+							r.Marquee(&startTime)
+							buff = append(buff, r.Output...)
+						}
+					case "rotarystack":
+						{
+							r.RotaryStack(&startTime)
+							buff = append(buff, r.Output...)
+						}
+					case "sequential":
+						{
+							r.Sequential(&startTime)
+							buff = append(buff, r.Output...)
+						}
+					case "visor":
+						{
+							r.Visor(&startTime)
+							buff = append(buff, r.Output...)
+						}
+					default:
+						{
+							for n := 0; n < int(d.Devices[k].LedChannels); n++ {
+								buff = append(buff, []byte{0, 0, 0}...)
+							}
+						}
+					}
+				}
+
+				if len(buff) < lightChannels*3 {
+					for n := len(buff) / 3; n < lightChannels; n++ {
+						buff = append(buff, []byte{0, 0, 0}...)
 					}
 				}
 

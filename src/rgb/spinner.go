@@ -8,13 +8,10 @@ import (
 // Spinner will run RGB function
 func (r *ActiveRGB) Spinner(startTime *time.Time) {
 	elapsed := time.Since(*startTime).Milliseconds()
-	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
-	
-	if progress >= 1.0 {
-		*startTime = time.Now() // Reset startTime to the current time
-		elapsed = 0             // Reset elapsed time
-		progress = 0            // Reset progress
+	if r.RgbModeSpeed <= 0 {
+		r.RgbModeSpeed = 1.0
 	}
+	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
 
 	activeLEDs := int(progress * float64(r.LightChannels))
 	buf := map[int][]byte{}

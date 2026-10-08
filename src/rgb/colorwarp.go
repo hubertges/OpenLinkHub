@@ -7,6 +7,10 @@ import (
 
 // Colorwarp will run RGB function
 func (r *ActiveRGB) Colorwarp(startTime *time.Time, activeRgb *ActiveRGB) {
+	if activeRgb == nil {
+		return
+	}
+
 	buf := map[int][]byte{}
 
 	elapsed := time.Since(*startTime).Milliseconds()
@@ -18,6 +22,14 @@ func (r *ActiveRGB) Colorwarp(startTime *time.Time, activeRgb *ActiveRGB) {
 	totalProgress := float64(elapsed) / (r.RgbModeSpeed * 1000)
 	progress := math.Mod(totalProgress, 1.0)
 	currentCycle := int(totalProgress)
+
+	if activeRgb.LastCycle == nil {
+		activeRgb.LastCycle = make(map[int]*LastCycle)
+	}
+
+	if activeRgb.LastCycle[r.ChannelId] == nil {
+		activeRgb.LastCycle[r.ChannelId] = &LastCycle{}
+	}
 
 	if activeRgb.LastCycle[r.ChannelId].RGBStartColor == nil {
 		activeRgb.LastCycle[r.ChannelId].RGBStartColor = GenerateRandomColor(r.RGBBrightness)

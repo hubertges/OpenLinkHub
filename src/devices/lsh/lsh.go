@@ -4608,7 +4608,7 @@ func (d *Device) generateRgbEffect(k int, channels uint8, startTime *time.Time, 
 	profile := d.GetRgbProfile(rgbProfile)
 	if profile == nil {
 		for i := 0; i < int(channels); i++ {
-			buff = []byte{0, 0, 0}
+			buff = append(buff, []byte{0, 0, 0}...)
 		}
 		return buff
 	}
@@ -4847,6 +4847,11 @@ func (d *Device) generateRgbEffect(k int, channels uint8, startTime *time.Time, 
 			r.Nebula(startTime)
 			buff = r.Output
 		}
+	case "visor":
+		{
+			r.Visor(startTime)
+			buff = r.Output
+		}
 	case "marquee":
 		{
 			r.Marquee(startTime)
@@ -4862,7 +4867,20 @@ func (d *Device) generateRgbEffect(k int, channels uint8, startTime *time.Time, 
 			r.Sequential(startTime)
 			buff = r.Output
 		}
+	default:
+		{
+			for n := 0; n < int(channels); n++ {
+				buff = append(buff, []byte{0, 0, 0}...)
+			}
+		}
 	}
+
+	if len(buff) < int(channels)*3 {
+		for n := len(buff) / 3; n < int(channels); n++ {
+			buff = append(buff, []byte{0, 0, 0}...)
+		}
+	}
+
 	return buff
 }
 

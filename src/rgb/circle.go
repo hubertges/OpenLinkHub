@@ -8,15 +8,10 @@ import (
 // Circle will run RGB function
 func (r *ActiveRGB) Circle(startTime *time.Time) {
 	elapsed := time.Since(*startTime).Milliseconds()
-	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
-
-	if progress >= 1.0 {
-		*startTime = time.Now()
-		elapsed = 0
-		progress = 0
+	if r.RgbModeSpeed <= 0 {
+		r.RgbModeSpeed = 1.0
 	}
-
-	progress = math.Mod(progress, 1.0)
+	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
 
 	buf := map[int][]byte{}
 	fadeFactor := 6.0 // Adjust for sharpness of the glowing point
@@ -76,16 +71,10 @@ func (r *ActiveRGB) Circle(startTime *time.Time) {
 // CircleShift will run RGB function
 func (r *ActiveRGB) CircleShift(startTime *time.Time) {
 	elapsed := time.Since(*startTime).Milliseconds()
-	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
-
-	if progress >= 1.0 {
-		*startTime = time.Now()
-		elapsed = 0
-		progress = 0
+	if r.RgbModeSpeed <= 0 {
+		r.RgbModeSpeed = 1.0
 	}
-
-	// Normalize progress to loop around
-	progress = math.Mod(progress, 1.0)
+	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
 
 	buf := map[int][]byte{}
 	fadeFactor := 6.0 // Controls how soft or sharp the gradient is

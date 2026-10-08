@@ -474,7 +474,7 @@ func (d *Device) generateRgbEffect(channels int, startTime *time.Time, rgbProfil
 	profile := d.GetRgbProfile(rgbProfile)
 	if profile == nil {
 		for i := 0; i < channels; i++ {
-			buff = []byte{0, 0, 0}
+			buff = append(buff, []byte{0, 0, 0}...)
 		}
 		return buff
 	}
@@ -632,12 +632,30 @@ func (d *Device) generateRgbEffect(channels int, startTime *time.Time, rgbProfil
 			r.Marquee(startTime)
 			buff = r.Output
 		}
+	case "rotarystack":
+		{
+			r.RotaryStack(startTime)
+			buff = r.Output
+		}
 	case "sequential":
 		{
 			r.Sequential(startTime)
 			buff = r.Output
 		}
+	default:
+		{
+			for n := 0; n < channels; n++ {
+				buff = append(buff, []byte{0, 0, 0}...)
+			}
+		}
 	}
+
+	if len(buff) < channels*3 {
+		for n := len(buff) / 3; n < channels; n++ {
+			buff = append(buff, []byte{0, 0, 0}...)
+		}
+	}
+
 	return buff
 }
 

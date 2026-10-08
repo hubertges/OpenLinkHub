@@ -1410,6 +1410,21 @@ func (d *Device) setDeviceColor() {
 						r.SpiralRainbow(startTime)
 						buff = append(buff, r.Output...)
 					}
+				case "pastelspiralrainbow":
+					{
+						r.PastelSpiralRainbow(startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "arc":
+					{
+						r.Arc(startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "rain":
+					{
+						r.Rain(startTime)
+						buff = append(buff, r.Output...)
+					}
 				case "watercolor":
 					{
 						r.Watercolor(startTime)
@@ -1489,9 +1504,46 @@ func (d *Device) setDeviceColor() {
 						r.Colorwarp(&startTime, d.activeRgb)
 						buff = append(buff, r.Output...)
 					}
+				case "nebula":
+					{
+						r.Nebula(&startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "marquee":
+					{
+						r.Marquee(&startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "rotarystack":
+					{
+						r.RotaryStack(&startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "sequential":
+					{
+						r.Sequential(&startTime)
+						buff = append(buff, r.Output...)
+					}
+				case "visor":
+					{
+						r.Visor(&startTime)
+						buff = append(buff, r.Output...)
+					}
+				default:
+					{
+						for n := 0; n < d.LEDChannels; n++ {
+							buff = append(buff, []byte{0, 0, 0}...)
+						}
+					}
 				}
 				if d.Exit {
 					return
+				}
+
+				if len(buff) < d.LEDChannels*3 {
+					for n := len(buff) / 3; n < d.LEDChannels; n++ {
+						buff = append(buff, []byte{0, 0, 0}...)
+					}
 				}
 
 				_, err = d.transfer(cmdWrite, cmdWriteColor, buff, false)

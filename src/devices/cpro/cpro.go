@@ -1546,9 +1546,6 @@ func (d *Device) saveDeviceProfile() {
 
 // getDeviceData will fetch device data
 func (d *Device) getDeviceData() {
-	d.deviceLock.Lock()
-	defer d.deviceLock.Unlock()
-
 	if d.Exit {
 		return
 	}
@@ -2145,77 +2142,73 @@ func (d *Device) setDeviceColor(resetColor bool) {
 			d.activeRgb[i].RGBStartColor = rgb.GenerateRandomColor(1)
 			d.activeRgb[i].RGBEndColor = rgb.GenerateRandomColor(1)
 
-			lc := 0
-			keys := make([]int, 0)
-			rgbSettings := make(map[int]*rgb.ActiveRGB)
-
-			for k := range d.Devices {
-				if d.Devices[k].PortId == externalHub.PortId && d.Devices[k].LedChannels > 0 {
-					rgbCustomColor := true
-					lc += int(d.Devices[k].LedChannels)
-					keys = append(keys, k)
-
-					profile := d.GetRgbProfile(d.Devices[k].RGB)
-					if profile == nil {
-						continue
-					}
-
-					rgbModeSpeed := common.FClamp(profile.Speed, 0.1, 10)
-					// Check if we have custom colors
-					if (rgb.Color{}) == profile.StartColor || (rgb.Color{}) == profile.EndColor {
-						rgbCustomColor = false
-					}
-
-					r := rgb.New(
-						int(d.Devices[k].LedChannels),
-						rgbModeSpeed,
-						nil,
-						nil,
-						profile.Brightness,
-						common.Clamp(profile.Smoothness, 1, 100),
-						time.Duration(rgbModeSpeed)*time.Second,
-						rgbCustomColor,
-					)
-
-					r.MinTemp = profile.MinTemp
-					r.MaxTemp = profile.MaxTemp
-
-					if rgbCustomColor {
-						r.RGBStartColor = &profile.StartColor
-						r.RGBEndColor = &profile.EndColor
-						r.RGBMiddleColor = &profile.MiddleColor
-					} else {
-						r.RGBStartColor = d.activeRgb[i].RGBStartColor
-						r.RGBEndColor = d.activeRgb[i].RGBEndColor
-						r.RGBMiddleColor = d.activeRgb[i].RGBMiddleColor
-					}
-
-					if r.RGBMiddleColor == nil {
-						r.RGBMiddleColor = &rgb.Color{}
-					}
-
-					r.RGBBrightness = rgb.GetBrightnessValueFloat(*d.DeviceProfile.BrightnessSlider)
-					r.RGBStartColor.Brightness = r.RGBBrightness
-					r.RGBEndColor.Brightness = r.RGBBrightness
-					r.RGBMiddleColor.Brightness = r.RGBBrightness
-					r.GradientList = profile.Gradients
-
-					r.ChannelId = k
-					rgbSettings[k] = r
-				} else {
-					continue
-				}
-			}
-			sort.Ints(keys)
-
 			for {
 				buff := make([]byte, 0)
 				select {
 				case <-d.activeRgb[i].Exit:
 					return
 				default:
+					lc := 0
+					keys := make([]int, 0)
+					for k := range d.Devices {
+						if d.Devices[k].PortId == externalHub.PortId && d.Devices[k].LedChannels > 0 {
+							lc += int(d.Devices[k].LedChannels)
+							keys = append(keys, k)
+						}
+					}
+					sort.Ints(keys)
+
 					for _, k := range keys {
-						r := rgbSettings[k]
+						rgbCustomColor := true
+						profile := d.GetRgbProfile(d.Devices[k].RGB)
+						if profile == nil {
+							for n := 0; n < int(d.Devices[k].LedChannels); n++ {
+								buff = append(buff, []byte{0, 0, 0}...)
+							}
+							continue
+						}
+
+						rgbModeSpeed := common.FClamp(profile.Speed, 0.1, 10)
+						// Check if we have custom colors
+						if (rgb.Color{}) == profile.StartColor || (rgb.Color{}) == profile.EndColor {
+							rgbCustomColor = false
+						}
+
+						r := rgb.New(
+							int(d.Devices[k].LedChannels),
+							rgbModeSpeed,
+							nil,
+							nil,
+							profile.Brightness,
+							common.Clamp(profile.Smoothness, 1, 100),
+							time.Duration(rgbModeSpeed)*time.Second,
+							rgbCustomColor,
+						)
+
+						r.MinTemp = profile.MinTemp
+						r.MaxTemp = profile.MaxTemp
+
+						if rgbCustomColor {
+							r.RGBStartColor = &profile.StartColor
+							r.RGBEndColor = &profile.EndColor
+							r.RGBMiddleColor = &profile.MiddleColor
+						} else {
+							r.RGBStartColor = d.activeRgb[i].RGBStartColor
+							r.RGBEndColor = d.activeRgb[i].RGBEndColor
+							r.RGBMiddleColor = d.activeRgb[i].RGBMiddleColor
+						}
+
+						if r.RGBMiddleColor == nil {
+							r.RGBMiddleColor = &rgb.Color{}
+						}
+
+						r.RGBBrightness = rgb.GetBrightnessValueFloat(*d.DeviceProfile.BrightnessSlider)
+						r.RGBStartColor.Brightness = r.RGBBrightness
+						r.RGBEndColor.Brightness = r.RGBBrightness
+						r.RGBMiddleColor.Brightness = r.RGBBrightness
+						r.GradientList = profile.Gradients
+						r.ChannelId = k
+
 						switch d.Devices[k].RGB {
 						case "off":
 							{
@@ -2231,6 +2224,16 @@ func (d *Device) setDeviceColor(resetColor bool) {
 						case "pastelrainbow":
 							{
 								r.PastelRainbow(startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "spiralrainbow":
+							{
+								r.SpiralRainbow(startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "pastelspiralrainbow":
+							{
+								r.PastelSpiralRainbow(startTime)
 								buff = append(buff, r.Output...)
 							}
 						case "arc":
@@ -2318,11 +2321,48 @@ func (d *Device) setDeviceColor(resetColor bool) {
 								r.Colorwarp(&startTime, d.activeRgb[i])
 								buff = append(buff, r.Output...)
 							}
+						case "nebula":
+							{
+								r.Nebula(&startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "marquee":
+							{
+								r.Marquee(&startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "rotarystack":
+							{
+								r.RotaryStack(&startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "sequential":
+							{
+								r.Sequential(&startTime)
+								buff = append(buff, r.Output...)
+							}
+						case "visor":
+							{
+								r.Visor(&startTime)
+								buff = append(buff, r.Output...)
+							}
+						default:
+							{
+								for n := 0; n < int(d.Devices[k].LedChannels); n++ {
+									buff = append(buff, []byte{0, 0, 0}...)
+								}
+							}
 						}
 					}
+
+					if len(buff) < lc*3 {
+						for n := len(buff) / 3; n < lc; n++ {
+							buff = append(buff, []byte{0, 0, 0}...)
+						}
+					}
+					d.writeColor(buff, lc, externalHub.PortId)
+					time.Sleep(10 * time.Millisecond)
 				}
-				d.writeColor(buff, lc, externalHub.PortId)
-				time.Sleep(10 * time.Millisecond)
 			}
 		}(*externalHub, i)
 	}

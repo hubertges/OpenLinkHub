@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -751,8 +752,26 @@ func friendlyTempLabel(file string) string {
 	return "Sensor " + num
 }
 
+var (
+	tempCacheMu         sync.RWMutex
+	cpuTempCache        float32
+	cpuTempCacheTime    time.Time
+	gpuTempCache        = make(map[int]float32)
+	gpuTempCacheTime    = make(map[int]time.Time)
+	amdGpuTempCache     float32
+	amdGpuTempCacheTime time.Time
+)
+
 // GetAMDGpuTemperature will return AMD GPU temperature
 func GetAMDGpuTemperature() float32 {
+	tempCacheMu.RLock()
+	if time.Since(amdGpuTempCacheTime) < 500*time.Millisecond && amdGpuTempCache > 0 {
+		val := amdGpuTempCache
+		tempCacheMu.RUnlock()
+		return val
+	}
+	tempCacheMu.RUnlock()
+
 	hwmonDir := "/sys/class/hwmon"
 	entries, err := os.ReadDir(hwmonDir)
 	if err != nil {
@@ -779,6 +798,12 @@ func GetAMDGpuTemperature() float32 {
 				continue
 			}
 			tempCelsius := float32(tempValue) / 1000.0
+
+			tempCacheMu.Lock()
+			amdGpuTempCache = tempCelsius
+			amdGpuTempCacheTime = time.Now()
+			tempCacheMu.Unlock()
+
 			return tempCelsius
 		}
 	}
@@ -790,6 +815,14 @@ func GetNVIDIAGpuTemperature(gpuIndex int) float32 {
 	if config.GetConfig().DefaultNvidiaGPU == -1 {
 		return 0
 	}
+
+	tempCacheMu.RLock()
+	if t, ok := gpuTempCacheTime[gpuIndex]; ok && time.Since(t) < 500*time.Millisecond {
+		val := gpuTempCache[gpuIndex]
+		tempCacheMu.RUnlock()
+		return val
+	}
+	tempCacheMu.RUnlock()
 
 	cmd := exec.Command("nvidia-smi", "-i", strconv.Itoa(gpuIndex), "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
@@ -806,7 +839,13 @@ func GetNVIDIAGpuTemperature(gpuIndex int) float32 {
 		return 0
 	}
 
-	return float32(temp)
+	res := float32(temp)
+	tempCacheMu.Lock()
+	gpuTempCache[gpuIndex] = res
+	gpuTempCacheTime[gpuIndex] = time.Now()
+	tempCacheMu.Unlock()
+
+	return res
 }
 
 // GetGpuTemperature will return GPU temperature
@@ -850,6 +889,14 @@ func getHwMonTemperature(hwmonDir string, entry os.DirEntry) float32 {
 
 // GetCpuTemperature will return CPU temperature
 func GetCpuTemperature() float32 {
+	tempCacheMu.RLock()
+	if time.Since(cpuTempCacheTime) < 500*time.Millisecond && cpuTempCache > 0 {
+		val := cpuTempCache
+		tempCacheMu.RUnlock()
+		return val
+	}
+	tempCacheMu.RUnlock()
+
 	hwmonDir := "/sys/class/hwmon"
 	entries, err := os.ReadDir(hwmonDir)
 	if err != nil {
@@ -872,6 +919,12 @@ func GetCpuTemperature() float32 {
 				if temp == 0 {
 					continue
 				}
+
+				tempCacheMu.Lock()
+				cpuTempCache = temp
+				cpuTempCacheTime = time.Now()
+				tempCacheMu.Unlock()
+
 				return temp
 			}
 		} else {
@@ -882,6 +935,12 @@ func GetCpuTemperature() float32 {
 					if temp == 0 {
 						continue
 					}
+
+					tempCacheMu.Lock()
+					cpuTempCache = temp
+					cpuTempCacheTime = time.Now()
+					tempCacheMu.Unlock()
+
 					return temp
 				}
 			}

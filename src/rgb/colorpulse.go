@@ -9,13 +9,10 @@ import (
 func (r *ActiveRGB) Colorpulse(startTime *time.Time) {
 	buf := map[int][]byte{}
 	elapsed := time.Since(*startTime).Milliseconds()
-	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
-
-	if progress >= 1.0 {
-		*startTime = time.Now() // Reset startTime to the current time
-		elapsed = 0             // Reset elapsed time
-		progress = 0            // Reset progress
+	if r.RgbModeSpeed <= 0 {
+		r.RgbModeSpeed = 1.0
 	}
+	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
 	color := interpolateColors(r.RGBStartColor, r.RGBEndColor, progress, r.RGBBrightness)
 
 	// Update LED channels

@@ -8,26 +8,31 @@ import (
 // RotaryStack will run RGB function
 func (r *ActiveRGB) RotaryStack(startTime *time.Time) {
 	elapsed := time.Since(*startTime).Milliseconds()
-	progress := math.Mod(float64(elapsed)/(r.RgbModeSpeed*1000), 1.0)
-
-	if progress >= 1.0 {
-		*startTime = time.Now() // Reset startTime
-		elapsed = 0
-		progress = 0
+	if r.RgbModeSpeed <= 0 {
+		r.RgbModeSpeed = 1.0
 	}
 
+	cycleDuration := r.RgbModeSpeed * 1000
 	ledCount := r.LightChannels
+	if ledCount <= 0 {
+		return
+	}
 
-	// Total number of completed rotor cycles (integer part of elapsed/cycle)
-	totalCycles := int(float64(elapsed) / float64(r.RgbModeSpeed*1000))
+	fullCycleDuration := cycleDuration * float64(ledCount)
+	if fullCycleDuration <= 0 {
+		fullCycleDuration = 1000
+	}
+
+	cycleElapsed := math.Mod(float64(elapsed), fullCycleDuration)
+	totalCycles := int(cycleElapsed / cycleDuration)
 	trailCount := totalCycles
 	if trailCount > ledCount {
 		trailCount = ledCount
 	}
 
-	// Current rotor progress (fractional part)
+	progress := math.Mod(cycleElapsed/cycleDuration, 1.0)
 	rotorPos := int(progress * float64(ledCount-trailCount))
-	if rotorPos >= ledCount-trailCount {
+	if rotorPos >= ledCount-trailCount && ledCount > trailCount {
 		rotorPos = ledCount - trailCount - 1
 	}
 
@@ -70,10 +75,5 @@ func (r *ActiveRGB) RotaryStack(startTime *time.Time) {
 		r.Output = SetColorInverted(raw)
 	} else {
 		r.Output = SetColor(raw)
-	}
-
-	// Reset startTime when all LEDs are marked
-	if trailCount >= ledCount {
-		*startTime = time.Now()
 	}
 }

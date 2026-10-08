@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 type AmdGfxActivity struct {
@@ -319,8 +321,24 @@ func GetAMDGpuModel() string {
 	return gpuInfo.GPUData[0].Asic.MarketName
 }
 
+var (
+	gpuUtilCacheMu      sync.RWMutex
+	nvidiaUtilCache     = make(map[int]int)
+	nvidiaUtilCacheTime = make(map[int]time.Time)
+	amdUtilCache        float64
+	amdUtilCacheTime    time.Time
+)
+
 // GetNVIDIAUtilization will return NVIDIA gpu utilization
 func getNVIDIAUtilization(index int) int {
+	gpuUtilCacheMu.RLock()
+	if t, ok := nvidiaUtilCacheTime[index]; ok && time.Since(t) < 500*time.Millisecond {
+		val := nvidiaUtilCache[index]
+		gpuUtilCacheMu.RUnlock()
+		return val
+	}
+	gpuUtilCacheMu.RUnlock()
+
 	cmd := exec.Command("nvidia-smi", "-i", strconv.Itoa(index), "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
@@ -332,6 +350,12 @@ func getNVIDIAUtilization(index int) int {
 		logger.Log(logger.Fields{"error": e}).Error("Unable to convert GPU utilization")
 		return 0
 	}
+
+	gpuUtilCacheMu.Lock()
+	nvidiaUtilCache[index] = util
+	nvidiaUtilCacheTime[index] = time.Now()
+	gpuUtilCacheMu.Unlock()
+
 	return util
 }
 
@@ -474,6 +498,15 @@ func getAMDUtilization() float64 {
 	if !isAmdsmiFound {
 		return 0
 	}
+
+	gpuUtilCacheMu.RLock()
+	if time.Since(amdUtilCacheTime) < 500*time.Millisecond && amdUtilCache > 0 {
+		val := amdUtilCache
+		gpuUtilCacheMu.RUnlock()
+		return val
+	}
+	gpuUtilCacheMu.RUnlock()
+
 	cmd := exec.Command(amdsmi, "metric", "-g", strconv.Itoa(gpuIndex), "-u", "--json")
 	jsonOutput, err := cmd.Output()
 	if err != nil {
@@ -489,7 +522,12 @@ func getAMDUtilization() float64 {
 	}
 
 	if len(gpuUsage.GPUData) > 0 {
-		return gpuUsage.GPUData[0].Usage.GfxActivity.Value
+		res := gpuUsage.GPUData[0].Usage.GfxActivity.Value
+		gpuUtilCacheMu.Lock()
+		amdUtilCache = res
+		amdUtilCacheTime = time.Now()
+		gpuUtilCacheMu.Unlock()
+		return res
 	}
 	return 0
 }
