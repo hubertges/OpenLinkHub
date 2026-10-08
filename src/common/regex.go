@@ -10,7 +10,7 @@ import "regexp"
 // These patterns are used across many packages; compiling once
 // at init avoids re-parsing on every call.
 var (
-	AlphanumericRegex         = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+	AlphanumericRegex         = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 	AlphanumericDashRegex     = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 	AlphanumericDashSemiColon = regexp.MustCompile(`^[a-zA-Z0-9-;:]+$`)
 	AlphanumericUnderscore    = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
