@@ -458,23 +458,26 @@ func (d *Device) setDeviceColor() {
 
 	go func() {
 		startTime := time.Now()
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
 
 		for {
-			lightChannels := 0
-			for k := range d.Controllers {
-				lightChannels += int(d.Controllers[k].LedChannels)
-			}
-
 			select {
 			case <-exitChan:
 				return
-			default:
+			case <-ticker.C:
 				if d.Exit {
 					return
 				}
+				d.mutex.RLock()
+				lightChannels := 0
+				for k := range d.Controllers {
+					lightChannels += int(d.Controllers[k].LedChannels)
+				}
+				d.mutex.RUnlock()
+
 				buff := d.generateRgbEffect(lightChannels, &startTime, d.DeviceProfile.RGBProfile)
 				d.distributeColors(buff)
-				time.Sleep(20 * time.Millisecond)
 			}
 		}
 	}()

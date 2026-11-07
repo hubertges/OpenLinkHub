@@ -237,9 +237,9 @@ func Init(_, _ uint16, _, path string) *common.Device {
 	d.setDeviceColor()         // Device color
 	d.setTemperatures()        // Initial temp
 	d.getTemperatureProbe()    // Devices with temperature value
+	d.startQueueWorker()       // Queue
 	d.setupOpenRGBController() // OpenRGB Controller
 	d.setupClusterController() // RGB Cluster
-	d.startQueueWorker()       // Queue
 	d.createDevice()           // Device register
 
 	return d.instance
@@ -1609,6 +1609,22 @@ func (d *Device) startQueueWorker() {
 
 	go func() {
 		for packetMap := range d.queue {
+			// Merge any additional queued updates so we always write the newest frame per DIMM
+		drainLoop:
+			for {
+				select {
+				case newer, ok := <-d.queue:
+					if !ok {
+						return
+					}
+					for k, v := range newer {
+						packetMap[k] = v
+					}
+				default:
+					break drainLoop
+				}
+			}
+
 			d.deviceLock.Lock()
 
 			if d.Exit {

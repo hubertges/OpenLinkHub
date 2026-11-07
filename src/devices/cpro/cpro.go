@@ -256,6 +256,7 @@ func Init(vendorId, productId uint16, serial, path string) *common.Device {
 	d.setDefaults()            // Set default speed value
 	d.setAutoRefresh()         // Set auto device refresh
 	d.setDeviceColor(true)     // Device color
+	d.startQueueWorker()       // Queue
 	d.setupOpenRGBController() // OpenRGB Controller
 	d.setupClusterController() // RGB Cluster
 	if config.GetConfig().Manual {
@@ -265,8 +266,7 @@ func Init(vendorId, productId uint16, serial, path string) *common.Device {
 	} else {
 		d.updateDeviceSpeed()
 	}
-	d.createDevice()     // Device register
-	d.startQueueWorker() // Queue
+	d.createDevice() // Device register
 	logger.Log(logger.Fields{"serial": d.Serial, "product": d.Product}).Info("Device successfully initialized")
 
 	return d.instance
@@ -1544,6 +1544,13 @@ func (d *Device) saveDeviceProfile() {
 	d.loadDeviceProfiles()
 }
 
+// transferLocked acquires deviceLock for a single atomic command/response transfer
+func (d *Device) transferLocked(endpoint byte, commands []byte) ([]byte, error) {
+	d.deviceLock.Lock()
+	defer d.deviceLock.Unlock()
+	return d.transfer(endpoint, commands)
+}
+
 // getDeviceData will fetch device data
 func (d *Device) getDeviceData() {
 	if d.Exit {
@@ -1552,57 +1559,52 @@ func (d *Device) getDeviceData() {
 
 	m := 0
 	// Fans
-	response, err := d.transfer(cmdGetConnectedFans, nil)
-	if err != nil {
-		logger.Log(logger.Fields{"error": err, "serial": d.Serial}).Error("Unable to get connected devices")
-		return
-	}
-	for s, i := 0, 1; s < fanChannels; s, i = s+1, i+1 {
-		connected := response[i] > 0x00
-		if connected {
-			rpm, e := d.transfer(cmdGetSpeed, []byte{byte(s)})
+	for s := 0; s < fanChannels; s++ {
+		if d.Exit {
+			return
+		}
+		if dev, ok := d.Devices[m]; ok && dev.HasSpeed {
+			rpm, e := d.transferLocked(cmdGetSpeed, []byte{byte(s)})
 			if e != nil {
 				logger.Log(logger.Fields{"error": e, "channel": s, "serial": d.Serial}).Error("Unable to read get device speed")
-				continue
-			}
-			val := binary.BigEndian.Uint16(rpm[1:])
-			if _, ok := d.Devices[m]; ok {
+			} else {
+				val := binary.BigEndian.Uint16(rpm[1:])
 				if val > 1 {
-					d.Devices[m].Rpm = int16(val)
+					dev.Rpm = int16(val)
 				}
 			}
+			time.Sleep(20 * time.Millisecond)
 		}
 		m++
 	}
 
 	// Temperature probes
-	response, err = d.transfer(cmdGetConnectedProbes, nil)
-	if err != nil {
-		logger.Log(logger.Fields{"error": err, "serial": d.Serial}).Error("Unable to get connected temperature probes")
-		return
-	}
-	for z, k := 0, 1; z < temperatureChannels; z, k = z+1, k+1 {
-		connected := response[k] == 0x01
-		if connected {
-			temp, e := d.transfer(cmdGetTemperature, []byte{byte(z)})
+	for z := 0; z < temperatureChannels; z++ {
+		if d.Exit {
+			return
+		}
+		if dev, ok := d.Devices[m]; ok && dev.IsTemperatureProbe {
+			temp, e := d.transferLocked(cmdGetTemperature, []byte{byte(z)})
 			if e != nil {
 				logger.Log(logger.Fields{"error": e, "channel": z, "serial": d.Serial}).Error("Unable to read get device speed")
-				continue
-			}
-			val := binary.BigEndian.Uint16(temp[1:]) / 100
-			if _, ok := d.Devices[m]; ok {
+			} else {
+				val := binary.BigEndian.Uint16(temp[1:]) / 100
 				if val > 1 {
-					d.Devices[m].Temperature = float32(val)
-					d.Devices[m].TemperatureString = dashboard.GetDashboard().TemperatureToString(float32(val))
+					dev.Temperature = float32(val)
+					dev.TemperatureString = dashboard.GetDashboard().TemperatureToString(float32(val))
 				}
 			}
+			time.Sleep(20 * time.Millisecond)
 		}
 		m++
 	}
 
 	// get the real power supply voltages
 	for i, rail := range voltageRails {
-		temp, e := d.transfer(cmdGetVolts, []byte{byte(i)})
+		if d.Exit {
+			return
+		}
+		temp, e := d.transferLocked(cmdGetVolts, []byte{byte(i)})
 		if e != nil {
 			logger.Log(logger.Fields{
 				"error":     e,
@@ -1616,6 +1618,7 @@ func (d *Device) getDeviceData() {
 		railVoltage := float32(math.Round(float64(binary.BigEndian.Uint16(temp[1:]))/1000*100) / 100)
 
 		d.RailVoltages[i] = &RailVoltage{Name: rail, Value: railVoltage}
+		time.Sleep(20 * time.Millisecond)
 	}
 
 	// Update stats
@@ -2403,9 +2406,9 @@ func (d *Device) updateDeviceSpeed() {
 			select {
 			case <-d.timerSpeed.C:
 				var temp float32 = 0
+				channelSpeeds := map[int]byte{}
 				for _, device := range d.Devices {
 					if device.HasSpeed {
-						channelSpeeds := map[int]byte{}
 						profiles := temperatures.GetTemperatureProfile(device.Profile)
 						if profiles == nil {
 							// No such profile, default to Normal
@@ -2536,11 +2539,10 @@ func (d *Device) updateDeviceSpeed() {
 							if fans > 100 {
 								fans = 100
 							}
-							cp := fmt.Sprintf("%s-%d-%f", device.Profile, device.ChannelId, temp)
+							cp := fmt.Sprintf("%s-%d-%d", device.Profile, device.ChannelId, fans)
 							if ok := tmp[device.ChannelId]; ok != cp {
 								tmp[device.ChannelId] = cp
 								channelSpeeds[device.ChannelId] = byte(fans)
-								d.setSpeed(channelSpeeds)
 							}
 						} else {
 							for i := 0; i < len(profiles.Profiles); i++ {
@@ -2556,12 +2558,14 @@ func (d *Device) updateDeviceSpeed() {
 										}
 
 										channelSpeeds[device.ChannelId] = byte(profile.Fans)
-										d.setSpeed(channelSpeeds)
 									}
 								}
 							}
 						}
 					}
+				}
+				if len(channelSpeeds) > 0 {
+					d.setSpeed(channelSpeeds)
 				}
 			case <-d.speedRefreshChan:
 				d.timerSpeed.Stop()
@@ -2676,12 +2680,18 @@ func (d *Device) writeColorCluster(data []byte, index int) {
 		return
 	}
 
-	lightChannels := len(data) / 3
-	if lightChannels < 1 {
-		return
+	// Copy data to avoid race conditions
+	copyData := make([]byte, len(data))
+	copy(copyData, data)
+
+	packetMap := map[int][]byte{
+		index: copyData,
 	}
 
-	d.writeColor(data, lightChannels, byte(index))
+	select {
+	case d.queue <- packetMap:
+	default:
+	}
 }
 
 // clearQueue will clear queue
@@ -2705,6 +2715,22 @@ func (d *Device) startQueueWorker() {
 				return
 			}
 
+			// Merge any additional queued updates so we always write the newest frame per port
+		drainLoop:
+			for {
+				select {
+				case newer, ok := <-d.queue:
+					if !ok {
+						return
+					}
+					for k, v := range newer {
+						packetMap[k] = v
+					}
+				default:
+					break drainLoop
+				}
+			}
+
 			keys := make([]int, 0, len(packetMap))
 			for k := range packetMap {
 				keys = append(keys, k)
@@ -2715,12 +2741,10 @@ func (d *Device) startQueueWorker() {
 				data := packetMap[channelId]
 				lightChannels := len(data) / 3
 				if lightChannels < 1 {
-					return
+					continue
 				}
 				d.writeColor(data, lightChannels, byte(channelId))
-				_ = channelId
 			}
-			time.Sleep(20 * time.Millisecond)
 		}
 	}()
 }

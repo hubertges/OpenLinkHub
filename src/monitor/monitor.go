@@ -216,7 +216,6 @@ func Init() {
 						time.Sleep(100 * time.Millisecond)
 						info, ok := cache[devPath]
 						if !ok {
-							logger.Log(logger.Fields{"path": devPath}).Info("Trying to remove non-existing device")
 							continue
 						}
 
