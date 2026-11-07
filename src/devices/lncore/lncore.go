@@ -87,11 +87,13 @@ type Device struct {
 	rgbMutex                sync.RWMutex
 	Exit                    bool
 	mutex                   sync.Mutex
+	deviceLock              sync.Mutex
 	autoRefreshChan         chan struct{}
 	timer                   *time.Ticker
 	HardwareModes           map[int]string
 	RGBModes                []string
 	instance                *common.Device
+	queue                   chan []byte
 }
 
 var (
@@ -235,6 +237,7 @@ func Init(vendorId, productId uint16, serial, _ string) *common.Device {
 	d.setColorEndpoint()    // Setup lightning
 	d.saveDeviceProfile()   // Save profile
 	d.setDeviceColor(false) // Device color
+	d.startQueueWorker()    // Queue
 	d.setupClusterController()
 	d.createDevice()        // Device register
 	logger.Log(logger.Fields{"serial": d.Serial, "product": d.Product}).Info("Device successfully initialized")
@@ -256,6 +259,9 @@ func (d *Device) createDevice() {
 
 // ShutdownLed will reset LED ports and set device in 'hardware' mode
 func (d *Device) ShutdownLed() {
+	d.deviceLock.Lock()
+	defer d.deviceLock.Unlock()
+
 	lightChannels := 0
 	for _, device := range d.Devices {
 		if device.LedChannels > 0 {
@@ -318,6 +324,7 @@ func (d *Device) GetRgbProfiles() interface{} {
 
 // Stop will stop all device operations and switch a device back to hardware mode
 func (d *Device) Stop() {
+	d.Exit = true
 	logger.Log(logger.Fields{"serial": d.Serial, "product": d.Product}).Info("Stopping device...")
 	if d.DeviceProfile != nil && d.DeviceProfile.RGBCluster {
 		cluster.Get().RemoveDeviceControllerBySerial(d.Serial)
@@ -348,6 +355,7 @@ func (d *Device) Stop() {
 
 // StopDirty will stop device in a dirty way
 func (d *Device) StopDirty() uint8 {
+	d.Exit = true
 	logger.Log(logger.Fields{"serial": d.Serial, "product": d.Product}).Info("Stopping device (dirty)...")
 	if d.DeviceProfile != nil && d.DeviceProfile.RGBCluster {
 		cluster.Get().RemoveDeviceControllerBySerial(d.Serial)
@@ -1617,9 +1625,13 @@ func (d *Device) setAutoRefresh() {
 					return
 				}
 				d.setTemperatures()
-				_, err := d.transfer(cmdSave, dataFlush, false)
-				if err != nil {
-					return
+				if (d.DeviceProfile == nil || !d.DeviceProfile.RGBCluster) && d.activeRgb == nil {
+					d.deviceLock.Lock()
+					_, err := d.transfer(cmdSave, dataFlush, false)
+					d.deviceLock.Unlock()
+					if err != nil {
+						return
+					}
 				}
 			case <-d.autoRefreshChan:
 				d.timer.Stop()
@@ -1631,6 +1643,9 @@ func (d *Device) setAutoRefresh() {
 
 // writeColor will write color data to the device
 func (d *Device) writeColor(data []byte, lightChannels int) {
+	d.deviceLock.Lock()
+	defer d.deviceLock.Unlock()
+
 	if d.Exit {
 		return
 	}
@@ -1740,16 +1755,72 @@ func (d *Device) writeColorCluster(data []byte, _ int) {
 		return
 	}
 
-	lightChannels := len(data) / 3
-	if lightChannels < 1 {
-		return
-	}
+	copyData := make([]byte, len(data))
+	copy(copyData, data)
 
-	d.writeColor(data, lightChannels)
+	select {
+	case d.queue <- copyData:
+	default:
+		select {
+		case <-d.queue:
+		default:
+		}
+		select {
+		case d.queue <- copyData:
+		default:
+		}
+	}
+}
+
+// clearQueue will clear queue
+func (d *Device) clearQueue() {
+	for {
+		select {
+		case <-d.queue:
+		default:
+			return
+		}
+	}
+}
+
+// startQueueWorker will initialize queue system and control packet flow towards the device
+func (d *Device) startQueueWorker() {
+	d.queue = make(chan []byte, 2)
+
+	go func() {
+		for data := range d.queue {
+			if d.Exit {
+				return
+			}
+
+		drainLoop:
+			for {
+				select {
+				case newer, ok := <-d.queue:
+					if !ok {
+						return
+					}
+					data = newer
+				default:
+					break drainLoop
+				}
+			}
+
+			lightChannels := len(data) / 3
+			if lightChannels < 1 {
+				continue
+			}
+
+			d.writeColor(data, lightChannels)
+		}
+	}()
 }
 
 // setColorEndpoint will activate hub color endpoint for further usage
 func (d *Device) setColorEndpoint() {
+	d.deviceLock.Lock()
+	defer d.deviceLock.Unlock()
+
 	// Get the number of LED channels we have
 	lightChannels := 0
 	for _, device := range d.Devices {
